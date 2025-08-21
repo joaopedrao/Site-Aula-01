@@ -1,0 +1,376 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Rastreamento de Entregas</title>
+  <!-- Leaflet (mapa) -->
+  <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
+  <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+  <style>
+    :root {
+      --bg: #0f172a; /* slate-900 */
+      --card: #111827; /* gray-900 */
+      --muted: #94a3b8; /* slate-400 */
+      --text: #e5e7eb; /* gray-200 */
+      --accent: #22d3ee; /* cyan-400 */
+      --ok: #22c55e; /* green-500 */
+      --warn: #f59e0b; /* amber-500 */
+      --danger: #ef4444; /* red-500 */
+      --radius: 18px;
+      --glass: rgba(255,255,255,0.06);
+      --shadow: 0 10px 30px rgba(0,0,0,0.25);
+      --maxw: 1100px;
+    }
+    * { box-sizing: border-box; }
+    body {
+      margin: 0; background: radial-gradient(1200px 500px at 20% -10%, rgba(34,211,238,0.08), transparent),
+                               radial-gradient(800px 400px at 100% 0%, rgba(34,197,94,0.08), transparent),
+                               var(--bg);
+      color: var(--text); font-family: Inter, ui-sans-serif, system-ui, -apple-system, Segoe UI, Roboto, Arial, sans-serif;
+    }
+    header { max-width: var(--maxw); margin: 32px auto 16px; padding: 0 16px; }
+    .brand { display: flex; align-items: center; gap: 12px; }
+    .logo {
+      width: 42px; height: 42px; border-radius: 12px; display: grid; place-items: center;
+      background: linear-gradient(135deg, var(--accent), #10b981);
+      box-shadow: var(--shadow);
+    }
+    .logo svg { filter: drop-shadow(0 2px 8px rgba(0,0,0,0.35)); }
+    h1 { margin: 0; font-size: clamp(20px, 2.4vw, 28px); letter-spacing: 0.2px; }
+    .muted { color: var(--muted); font-size: 14px; }
+
+    main { max-width: var(--maxw); margin: 16px auto 56px; padding: 0 16px; }
+    .grid { display: grid; grid-template-columns: 1.1fr 0.9fr; gap: 18px; }
+    @media (max-width: 980px) { .grid { grid-template-columns: 1fr; } }
+
+    .card {
+      background: linear-gradient(180deg, rgba(255,255,255,0.04), rgba(255,255,255,0.02));
+      border: 1px solid rgba(148,163,184,0.18);
+      border-radius: var(--radius); padding: 18px; box-shadow: var(--shadow);
+      backdrop-filter: blur(6px);
+    }
+    .row { display: flex; gap: 12px; align-items: center; flex-wrap: wrap; }
+    .space { height: 10px; }
+
+    /* Busca */
+    .search { display: grid; grid-template-columns: 1fr auto auto; gap: 10px; }
+    @media (max-width: 560px) { .search { grid-template-columns: 1fr; } }
+    .input {
+      background: var(--card); border: 1px solid rgba(255,255,255,0.12); color: var(--text);
+      padding: 14px 14px; border-radius: 14px; font-size: 15px; outline: none;
+      box-shadow: inset 0 0 0 1px transparent; transition: box-shadow .2s, border-color .2s;
+    }
+    .input:focus { border-color: var(--accent); box-shadow: inset 0 0 0 1px var(--accent); }
+    .btn {
+      padding: 12px 16px; border-radius: 14px; border: 1px solid rgba(255,255,255,0.15);
+      background: linear-gradient(180deg, rgba(34,211,238,0.2), rgba(34,211,238,0.08));
+      color: white; cursor: pointer; font-weight: 600; letter-spacing: .2px;
+      transition: transform .06s ease, filter .2s ease;
+    }
+    .btn:hover { filter: brightness(1.1); }
+    .btn:active { transform: translateY(1px) scale(.99); }
+    .btn.secondary { background: linear-gradient(180deg, rgba(148,163,184,0.18), rgba(148,163,184,0.08)); }
+
+    /* Status */
+    .status-pill { display: inline-flex; gap: 8px; align-items: center; padding: 6px 10px; border-radius: 999px;
+      background: rgba(34,211,238,0.12); border: 1px solid rgba(34,211,238,0.3); font-weight: 600; font-size: 13px; }
+    .status-pill.ok { background: rgba(34,197,94,0.12); border-color: rgba(34,197,94,0.35); }
+    .status-pill.warn { background: rgba(245,158,11,0.12); border-color: rgba(245,158,11,0.35); }
+
+    .kpis { display: grid; grid-template-columns: repeat(4, 1fr); gap: 10px; margin-top: 10px; }
+    @media (max-width: 720px) { .kpis { grid-template-columns: repeat(2, 1fr); } }
+    .kpi { background: var(--card); border: 1px solid rgba(255,255,255,0.08); border-radius: 14px; padding: 12px; }
+    .kpi .label { color: var(--muted); font-size: 12px; }
+    .kpi .value { font-size: 16px; font-weight: 700; margin-top: 6px; }
+
+    /* Progresso */
+    .progress { position: relative; height: 10px; background: rgba(148,163,184,0.18); border-radius: 999px; overflow: hidden; }
+    .progress > i { position: absolute; inset: 0; width: var(--p, 0%); background: linear-gradient(90deg, var(--accent), #10b981); }
+    .steps { display: grid; grid-template-columns: repeat(4, 1fr); gap: 8px; margin-top: 8px; font-size: 12px; color: var(--muted); }
+
+    /* Timeline */
+    .timeline { display: grid; gap: 12px; }
+    .event { display: grid; grid-template-columns: 18px 1fr; gap: 10px; }
+    .dot { width: 10px; height: 10px; border-radius: 999px; margin-top: 6px; background: var(--accent); box-shadow: 0 0 0 4px rgba(34,211,238,0.12); }
+    .event .title { font-weight: 700; }
+    .event .meta { color: var(--muted); font-size: 13px; }
+
+    /* Mapa */
+    #map { height: 360px; border-radius: 14px; overflow: hidden; box-shadow: var(--shadow); border: 1px solid rgba(255,255,255,0.12); }
+
+    /* Tabela */
+    table { width: 100%; border-collapse: collapse; font-size: 14px; }
+    th, td { padding: 10px; border-bottom: 1px solid rgba(255,255,255,0.08); text-align: left; }
+    th { color: var(--muted); font-weight: 600; }
+    tbody tr:hover { background: rgba(255,255,255,0.03); }
+
+    footer { max-width: var(--maxw); margin: 18px auto 36px; padding: 0 16px; color: var(--muted); font-size: 12px; }
+  </style>
+</head>
+<body>
+  <header>
+    <div class="brand">
+      <div class="logo" aria-hidden="true">
+        <svg width="24" height="24" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+          <path d="M4 7h9l7 7v3h-9l-7-7V7z" stroke="white" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+          <path d="M13 7v7h7" stroke="white" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+        </svg>
+      </div>
+      <div>
+        <h1>Rastreamento de Entregas</h1>
+        <div class="muted">Exemplo completo em HTML, CSS e JavaScript (com mapa)</div>
+      </div>
+    </div>
+  </header>
+
+  <main>
+    <!-- Busca e ações -->
+    <section class="card">
+      <div class="search">
+        <input id="code" class="input" placeholder="Digite o código de rastreio (ex: BR123456789)"/>
+        <button id="btnTrack" class="btn">Rastrear</button>
+        <button id="btnSimulate" class="btn secondary" title="Avança o status (para testes)">Simular atualização</button>
+      </div>
+      <div class="space"></div>
+      <div class="row">
+        <span id="badge" class="status-pill warn">Aguardando código…</span>
+        <span class="muted" id="subtitle">Informe o código para ver os detalhes da entrega.</span>
+      </div>
+      <div class="kpis">
+        <div class="kpi"><div class="label">Código</div><div id="kpiCode" class="value">—</div></div>
+        <div class="kpi"><div class="label">Transportadora</div><div id="kpiCarrier" class="value">—</div></div>
+        <div class="kpi"><div class="label">Previsão</div><div id="kpiEta" class="value">—</div></div>
+        <div class="kpi"><div class="label">Última atualização</div><div id="kpiUpdated" class="value">—</div></div>
+      </div>
+      <div class="space"></div>
+      <div class="progress" aria-label="Progresso da entrega"><i id="bar"></i></div>
+      <div class="steps"><span>Postado</span><span>Em trânsito</span><span>Saiu p/ entrega</span><span>Entregue</span></div>
+    </section>
+
+    <!-- Grid principal: Timeline + Mapa -->
+    <section class="grid">
+      <div class="card">
+        <h3 style="margin:0 0 10px">Linha do tempo</h3>
+        <div id="timeline" class="timeline"></div>
+        <div class="space"></div>
+        <h3 style="margin:14px 0 10px">Eventos</h3>
+        <div style="overflow:auto">
+          <table id="eventsTable" aria-label="Tabela de eventos">
+            <thead>
+              <tr><th>Data/Hora</th><th>Status</th><th>Local</th></tr>
+            </thead>
+            <tbody></tbody>
+          </table>
+        </div>
+      </div>
+
+      <div class="card">
+        <h3 style="margin:0 0 10px">Mapa do trajeto</h3>
+        <div id="map"></div>
+      </div>
+    </section>
+  </main>
+
+  <footer>
+    Demo local sem integração real. Substitua o "mock" por sua API (Correios, transportadora, ERP). © 2025
+  </footer>
+
+  <script>
+    // ===================== MOCK DE DADOS =====================
+    const MOCK = {
+      "BR123456789": {
+        code: "BR123456789",
+        carrier: "FastLog BR",
+        eta: addDays(new Date(), 2),
+        statusIndex: 2, // 0..3
+        route: [
+          { name: "Fortaleza, CE", coord: [-3.7319, -38.5267] },
+          { name: "Recife, PE", coord: [-8.0476, -34.8770] },
+          { name: "Salvador, BA", coord: [-12.9777, -38.5016] },
+          { name: "Rio de Janeiro, RJ", coord: [-22.9068, -43.1729] },
+          { name: "São Paulo, SP", coord: [-23.5505, -46.6333] }
+        ],
+        events: [
+          { ts: subHours(new Date(), 72), title: "Objeto postado", place: "Fortaleza/CE" },
+          { ts: subHours(new Date(), 48), title: "Encaminhado para RECIFE/PE", place: "Fortaleza/CE" },
+          { ts: subHours(new Date(), 28), title: "Objeto em trânsito", place: "Recife/PE" },
+          { ts: subHours(new Date(), 5), title: "Saiu para entrega", place: "São Paulo/SP" }
+        ]
+      },
+      "BR987654321": {
+        code: "BR987654321",
+        carrier: "TransBrasil",
+        eta: addDays(new Date(), 1),
+        statusIndex: 1,
+        route: [
+          { name: "Manaus, AM", coord: [-3.1190, -60.0217] },
+          { name: "Belém, PA", coord: [-1.4558, -48.4902] },
+          { name: "Brasília, DF", coord: [-15.7939, -47.8828] },
+          { name: "Belo Horizonte, MG", coord: [-19.9167, -43.9345] }
+        ],
+        events: [
+          { ts: subHours(new Date(), 60), title: "Recebido na unidade", place: "Manaus/AM" },
+          { ts: subHours(new Date(), 36), title: "Objeto em trânsito", place: "Belém/PA" },
+          { ts: subHours(new Date(), 12), title: "Encaminhado para unidade de distribuição", place: "Brasília/DF" }
+        ]
+      }
+    };
+
+    // ===================== UTILITÁRIOS =====================
+    function addDays(d, n){ const x = new Date(d); x.setDate(x.getDate()+n); return x; }
+    function subHours(d, n){ const x = new Date(d); x.setHours(x.getHours()-n); return x; }
+    function brDate(d){
+      const dt = (d instanceof Date) ? d : new Date(d);
+      return dt.toLocaleString('pt-BR', { weekday: 'short', day: '2-digit', month: 'short', hour: '2-digit', minute: '2-digit' });
+    }
+
+    // ===================== ESTADO =====================
+    let map, markersLayer, routeLine;
+    let current = null; // objeto de rastreio carregado
+
+    // ===================== INICIALIZAÇÃO =====================
+    initMap();
+    hydrateFromHash();
+    document.getElementById('btnTrack').addEventListener('click', trackHandler);
+    document.getElementById('btnSimulate').addEventListener('click', simulateHandler);
+    document.getElementById('code').addEventListener('keydown', (e)=>{ if(e.key==='Enter') trackHandler(); });
+
+    // ===================== HANDLERS =====================
+    function trackHandler(){
+      const code = document.getElementById('code').value.trim().toUpperCase();
+      if(!code){ return toast('Informe um código.'); }
+      window.location.hash = code; // para compartilhar URL
+      loadTracking(code);
+    }
+    function simulateHandler(){
+      if(!current){ return toast('Carregue um código primeiro.'); }
+      // avança status e cria um novo evento mock
+      current.statusIndex = Math.min(3, current.statusIndex + 1);
+      const stepTitle = ["Objeto postado","Em trânsito","Saiu para entrega","Entregue"][current.statusIndex];
+      const lastPlace = current.route[Math.min(current.route.length-1, current.statusIndex)].name.replace(',', '/');
+      current.events.unshift({ ts: new Date(), title: stepTitle, place: lastPlace });
+      if(current.statusIndex === 3){ document.getElementById('badge').className = 'status-pill ok'; }
+      render(current);
+    }
+
+    window.addEventListener('hashchange', hydrateFromHash);
+    function hydrateFromHash(){
+      const code = decodeURIComponent((location.hash || '').replace('#','')).toUpperCase();
+      if(code){ document.getElementById('code').value = code; loadTracking(code); }
+    }
+
+    // ===================== CARREGAR DADOS (mock/API) =====================
+    async function loadTracking(code){
+      // Aqui você pode trocar pelo fetch da sua API:
+      // const res = await fetch(`/api/rastreamento/${code}`); const data = await res.json();
+      const data = structuredClone(MOCK[code]);
+      if(!data){
+        // Se não existir no mock, cria um exemplo básico para demonstrar
+        const now = new Date();
+        const sample = {
+          code, carrier: 'SuaTransportadora', eta: addDays(now, 3), statusIndex: 0,
+          route: [ {name:'Origem, BR', coord: [-15,-47]}, {name:'Destino, BR', coord: [-23,-46]} ],
+          events: [ { ts: now, title: 'Objeto criado no sistema', place: 'Origem/BR' } ]
+        };
+        current = sample;
+      } else {
+        current = data;
+      }
+      render(current);
+    }
+
+    // ===================== RENDER =====================
+    function render(data){
+      // Badge e subtítulo
+      const badge = document.getElementById('badge');
+      const subtitle = document.getElementById('subtitle');
+      const titles = ['Postado','Em trânsito','Saiu para entrega','Entregue'];
+      badge.textContent = titles[data.statusIndex] || 'Atualizando…';
+      badge.className = 'status-pill ' + (data.statusIndex===3? 'ok' : data.statusIndex===0? 'warn':'');
+      subtitle.textContent = (data.statusIndex===3)
+        ? 'Entrega concluída. Obrigado por utilizar nosso serviço!'
+        : 'Acompanhe a movimentação em tempo real abaixo.';
+
+      // KPIs
+      document.getElementById('kpiCode').textContent = data.code;
+      document.getElementById('kpiCarrier').textContent = data.carrier;
+      document.getElementById('kpiEta').textContent = brDate(data.eta).replace(',','');
+      const last = data.events.slice().sort((a,b)=> new Date(b.ts)-new Date(a.ts))[0];
+      document.getElementById('kpiUpdated').textContent = last ? brDate(last.ts) : '—';
+
+      // Barra de progresso
+      const percent = [8, 45, 75, 100][data.statusIndex] || 8;
+      document.getElementById('bar').style.setProperty('--p', percent+'%');
+
+      // Timeline visual
+      const tl = document.getElementById('timeline');
+      tl.innerHTML = '';
+      data.events
+        .slice().sort((a,b)=> new Date(b.ts)-new Date(a.ts))
+        .forEach(ev => {
+          const div = document.createElement('div');
+          div.className = 'event';
+          div.innerHTML = `
+            <div class="dot"></div>
+            <div>
+              <div class="title">${ev.title}</div>
+              <div class="meta">${brDate(ev.ts)} • ${ev.place}</div>
+            </div>`;
+          tl.appendChild(div);
+        });
+
+      // Tabela
+      const tbody = document.querySelector('#eventsTable tbody');
+      tbody.innerHTML = '';
+      data.events
+        .slice().sort((a,b)=> new Date(b.ts)-new Date(a.ts))
+        .forEach(ev => {
+          const tr = document.createElement('tr');
+          tr.innerHTML = `<td>${brDate(ev.ts)}</td><td>${ev.title}</td><td>${ev.place}</td>`;
+          tbody.appendChild(tr);
+        });
+
+      // Mapa
+      drawMap(data);
+    }
+
+    // ===================== MAPA (Leaflet) =====================
+    function initMap(){
+      map = L.map('map', { zoomControl: true });
+      L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+        maxZoom: 19, attribution: '© OpenStreetMap'
+      }).addTo(map);
+      markersLayer = L.layerGroup().addTo(map);
+    }
+
+    function drawMap(data){
+      markersLayer.clearLayers();
+      if(routeLine){ map.removeLayer(routeLine); routeLine = null; }
+      const coords = data.route.map(p=> p.coord);
+      // marcadores
+      data.route.forEach((p, idx)=>{
+        const mk = L.marker(p.coord).bindPopup(`<b>${p.name}</b><br>Etapa ${idx+1}/${data.route.length}`);
+        markersLayer.addLayer(mk);
+      });
+      // polilinha
+      routeLine = L.polyline(coords, { weight: 4, opacity: 0.9 }).addTo(map);
+      // marcador de posição atual aproximada
+      const curIdx = Math.min(data.statusIndex, data.route.length-1);
+      const cur = data.route[curIdx];
+      const pulse = L.circleMarker(cur.coord, { radius: 8, weight: 2, opacity: 1, fillOpacity: 0.6 }).addTo(map);
+      pulse.bindTooltip('Posição aproximada');
+      const bounds = L.latLngBounds(coords);
+      map.fitBounds(bounds, { padding: [20,20] });
+    }
+
+    // ===================== TOAST =====================
+    function toast(msg){
+      const t = document.createElement('div');
+      t.textContent = msg;
+      t.style.cssText = `position:fixed;left:50%;top:18px;transform:translateX(-50%);background:var(--card);color:var(--text);padding:10px 14px;border:1px solid rgba(255,255,255,0.15);border-radius:12px;box-shadow:var(--shadow);z-index:9999;`;
+      document.body.appendChild(t); setTimeout(()=> t.remove(), 2200);
+    }
+  </script>
+</body>
+</html>
